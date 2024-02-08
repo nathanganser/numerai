@@ -1,0 +1,7 @@
+numerapi
+pandas
+lightgbm
+cloudpickle
+pyarrow
+scikit-learn
+scipy==1.10.1
