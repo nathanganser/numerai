@@ -3,15 +3,17 @@ from matplotlib import pyplot as plt
 from numerapi import NumerAPI
 import pandas as pd
 import json
+
 napi = NumerAPI()
 from numerai_helper_functions import neutralize
 from numerai_tools.scoring import numerai_corr
 import numpy as np
+
 # use one of the latest data versions
 DATA_VERSION = "v4.3"
 matplotlib.use('TkAgg')
 
-
+keep_fast = False
 
 # Download data
 napi.download_dataset(f"{DATA_VERSION}/train_int8.parquet")
@@ -19,19 +21,19 @@ napi.download_dataset(f"{DATA_VERSION}/features.json")
 
 # Load data
 feature_metadata = json.load(open(f"{DATA_VERSION}/features.json"))
-features = feature_metadata["feature_sets"]["medium"] # use "all" for better performance. Requires more RAM.
-train = pd.read_parquet(f"{DATA_VERSION}/train_int8.parquet", columns=["era"] + features + ["target"])
+if keep_fast:
+    features = feature_metadata["feature_sets"]["small"]  # use "all" for better performance. Requires more RAM.
+else:
+    features = feature_metadata["feature_sets"]["all"]
 
-
-
+train = pd.read_parquet(f"{DATA_VERSION}/train_int8.parquet", columns=["era", "target"] + features)
 
 # Downsample for speed
-#train = train[train["era"].isin(train["era"].unique()[::4])]  # skip this step for better performance
+if keep_fast:
+    train = train[train["era"].isin(train["era"].unique()[::4])]  # skip this step for better performance
+    train = train[train['era'] > "0400"]
 
-print(train.head())
-
-
-
+print(train)
 
 # Perform a correlation analysis between all features and the target variable to identify which features are most correlated with the target.
 
@@ -54,7 +56,8 @@ print(features_to_neutralize)
 neutralized_train = neutralize(
     df=train,
     columns=features_to_neutralize,  # Features you want to neutralize
-    neutralizers=None,  # In this context, it seems you're neutralizing features based on their correlation, not using specific neutralizers
+    neutralizers=None,
+    # In this context, it seems you're neutralizing features based on their correlation, not using specific neutralizers
     proportion=1.0,  # Fully neutralize
     era_col="era"  # Column that identifies the era
 )
@@ -67,6 +70,6 @@ neutralized_train.index = train.index
 for feature in features_to_neutralize:
     train[feature] = neutralized_train[feature]
 
-
 print(train.head())
+
 
