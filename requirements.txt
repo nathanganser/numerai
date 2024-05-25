@@ -7,3 +7,4 @@ scikit-learn
 scipy==1.10.1
 numerai-tools
 matplotlib
+catboost
