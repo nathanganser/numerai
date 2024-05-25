@@ -9,3 +9,4 @@ numerai-tools
 matplotlib
 catboost
 xgboost
+tensorflow
