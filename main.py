@@ -18,6 +18,7 @@ napi = NumerAPI()
 # Set data version and feature set
 DATA_VERSION = "v4.3"
 featureset = "medium"
+print("downloading...")
 napi.download_dataset(f"{DATA_VERSION}/train_int8.parquet")
 napi.download_dataset(f"{DATA_VERSION}/validation_int8.parquet")
 napi.download_dataset(f"{DATA_VERSION}/features.json")
@@ -33,6 +34,7 @@ validation_data = pd.read_parquet(f"{DATA_VERSION}/validation_int8.parquet", col
 #train_data = train_data[(train_data["era"].astype(int) > 200) & (train_data["era"].isin(train_data["era"].unique()[::3]))]
 
 # Feature Selection using Recursive Feature Elimination
+print("Feature Selection using Recursive Feature Elimination")
 selector = RFECV(estimator=RandomForestRegressor(n_estimators=100, random_state=42), step=1, cv=5, scoring='neg_mean_squared_error')
 selector.fit(train_data[feature_set], train_data["target"])
 selected_features = list(train_data[feature_set].columns[selector.support_])
@@ -97,6 +99,7 @@ ensemble_model = VotingRegressor(
         catboost_scores["corr"].mean()
     ]
 )
+print("ensemble...)
 ensemble_model.fit(train_data[selected_features], train_data["target"])
 
 
