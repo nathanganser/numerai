@@ -28,9 +28,9 @@ feature_set = feature_metadata["feature_sets"][featureset]
 train_data = pd.read_parquet(f"{DATA_VERSION}/train_int8.parquet", columns=["era", "target"] + feature_set)
 validation_data = pd.read_parquet(f"{DATA_VERSION}/validation_int8.parquet", columns=["era", "target"] + feature_set)
 
-validation_data = validation_data[(validation_data["era"].astype(int) > 200) & (validation_data["era"].isin(validation_data["era"].unique()[::3]))]
+#validation_data = validation_data[(validation_data["era"].astype(int) > 200) & (validation_data["era"].isin(validation_data["era"].unique()[::3]))]
 
-train_data = train_data[(train_data["era"].astype(int) > 200) & (train_data["era"].isin(train_data["era"].unique()[::3]))]
+#train_data = train_data[(train_data["era"].astype(int) > 200) & (train_data["era"].isin(train_data["era"].unique()[::3]))]
 
 # Feature Selection using Recursive Feature Elimination
 selector = RFECV(estimator=RandomForestRegressor(n_estimators=100, random_state=42), step=1, cv=5, scoring='neg_mean_squared_error')
