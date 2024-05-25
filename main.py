@@ -1,90 +1,122 @@
-from numerapi import NumerAPI
 import pandas as pd
+from sklearn.ensemble import VotingRegressor, HistGradientBoostingRegressor, RandomForestRegressor
+from sklearn.feature_selection import RFECV
+import lightgbm as lgb
+import xgboost as xgb
+from catboost import CatBoostRegressor
+from numerapi import NumerAPI
+import numpy as np
 import json
+import cloudpickle
+import requests
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import tensorflow as tf
 
-from numerai_helper_functions import neutralize
-
+# Initialize NumerAPI
 napi = NumerAPI()
 
-# use one of the latest data versions
+# Set data version and feature set
 DATA_VERSION = "v4.3"
-
-# Download data
-# napi.download_dataset(f"{DATA_VERSION}/train_int8.parquet")
-# napi.download_dataset(f"{DATA_VERSION}/features.json")
-
-# Load data
+featureset = "medium"
+napi.download_dataset(f"{DATA_VERSION}/train_int8.parquet")
+napi.download_dataset(f"{DATA_VERSION}/validation_int8.parquet")
+napi.download_dataset(f"{DATA_VERSION}/features.json")
 feature_metadata = json.load(open(f"{DATA_VERSION}/features.json"))
-features = feature_metadata["feature_sets"]["all"]  # use "all" for better performance. Requires more RAM.
-train = pd.read_parquet(f"{DATA_VERSION}/train_int8.parquet", columns=["era"] + features + ["target"])
+feature_set = feature_metadata["feature_sets"][featureset]
 
-print('data is loaded')
-# Perform a correlation analysis between all features and the target variable to identify which features are most correlated with the target.
+# Load datasets
+train_data = pd.read_parquet(f"{DATA_VERSION}/train_int8.parquet", columns=["era", "target"] + feature_set)
+validation_data = pd.read_parquet(f"{DATA_VERSION}/validation_int8.parquet", columns=["era", "target"] + feature_set)
 
-# Calculate correlation matrix
-print("correlation matrix...")
-correlation_matrix = train.corr()
+validation_data = validation_data[(validation_data["era"].astype(int) > 200) & (validation_data["era"].isin(validation_data["era"].unique()[::3]))]
 
-# Extract correlations with the target variable, excluding the target itself
-target_correlations = correlation_matrix['target'].drop('target')
+train_data = train_data[(train_data["era"].astype(int) > 200) & (train_data["era"].isin(train_data["era"].unique()[::3]))]
 
-# Sort the correlations to find the most correlated features with the target
-sorted_target_correlations = target_correlations.abs().sort_values(ascending=False)
+# Feature Selection using Recursive Feature Elimination
+selector = RFECV(estimator=RandomForestRegressor(n_estimators=100, random_state=42), step=1, cv=5, scoring='neg_mean_squared_error')
+selector.fit(train_data[feature_set], train_data["target"])
+selected_features = list(train_data[feature_set].columns[selector.support_])
 
-# Identify features to neutralize based on a 0.01 correlation threshold
-features_to_neutralize = sorted_target_correlations[sorted_target_correlations > 0.01].index.tolist()
+# Era-based Cross-validation with additional metrics
+def era_based_cv(model, train_data, validation_data, features):
+    eras = train_data["era"].unique()
+    cv_scores = []
+    for era in eras:
+        train_fold = train_data[train_data["era"] != era]
+        val_fold = train_data[train_data["era"] == era]
+        model.fit(train_fold[features], train_fold["target"])
+        predictions = model.predict(val_fold[features])
+        mse = mean_squared_error(val_fold["target"], predictions)
+        mae = mean_absolute_error(val_fold["target"], predictions)
+        r2 = r2_score(val_fold["target"], predictions)
+        corr = np.corrcoef(val_fold["target"], predictions)[0, 1]
+        cv_scores.append({"era": era, "mse": mse, "mae": mae, "r2": r2, "corr": corr})
+        print(f"Era {era} - MSE: {mse:.4f}, MAE: {mae:.4f}, R2: {r2:.4f}, Corr: {corr:.4f}")
+    return pd.DataFrame(cv_scores)
 
-print("Neutralising those features:")
-print(features_to_neutralize)
-
-# Perform neutralization
-neutralized_train = neutralize(
-    df=train,
-    columns=features_to_neutralize,  # Features you want to neutralize
-    neutralizers=None,
-    # In this context, it seems you're neutralizing features based on their correlation, not using specific neutralizers
-    proportion=0.3,  # Fully neutralize
-    era_col="era"  # Column that identifies the era
+# Model Training with hyperparameter tuning
+lgb_model = lgb.LGBMRegressor(
+    n_estimators=5000,
+    learning_rate=0.005,
+    max_depth=7,
+    num_leaves=2**7-1,
+    colsample_bytree=0.8,
+    subsample=0.9,
+    subsample_freq=1,
+    random_state=42
 )
 
-# Ensure the index is aligned
-neutralized_train.index = train.index
-
-# Step 2: Merge neutralized features back into the original dataset
-# This step involves replacing the original columns in `train` with their neutralized counterparts
-for feature in features_to_neutralize:
-    train[feature] = neutralized_train[feature]
-
-# Train model
-import lightgbm as lgb
-
-model = lgb.LGBMRegressor(
-    n_estimators=2000,  # If you want to use a larger model we've found 20_000 trees to be better
-    learning_rate=0.01,  # and a learning rate of 0.001
-    max_depth=5,  # and max_depth=6
-    num_leaves=2 ** 5 - 1,  # and num_leaves of 2**6-1
-    colsample_bytree=0.1
-)
-print("Fitting...")
-model.fit(
-    train[features],
-    train["target"]
+hist_gb_model = HistGradientBoostingRegressor(
+    max_iter=500,
+    max_depth=15,
+    learning_rate=0.05,
+    l2_regularization=1e-4,
+    random_state=42
 )
 
+catboost_model = CatBoostRegressor(
+    iterations=2000,
+    depth=8,
+    learning_rate=0.03,
+    l2_leaf_reg=3,
+    random_seed=42,
+    loss_function='RMSE',
+    verbose=0
+)
 
-# Define predict function
-def predict(
-        live_features: pd.DataFrame,
-        live_benchmark_models: pd.DataFrame
-) -> pd.DataFrame:
-    live_predictions = model.predict(live_features[features])
+lgb_scores = era_based_cv(lgb_model, train_data, validation_data, selected_features)
+hist_gb_scores = era_based_cv(hist_gb_model, train_data, validation_data, selected_features)
+catboost_scores = era_based_cv(catboost_model, train_data, validation_data, selected_features)
+
+# Ensemble with optimized weights based on cross-validation performance
+ensemble_model = VotingRegressor(
+    estimators=[("lgb", lgb_model), ("hist_gb", hist_gb_model), ("catboost", catboost_model)],
+    weights=[
+        lgb_scores["corr"].mean(),
+        hist_gb_scores["corr"].mean(),
+        catboost_scores["corr"].mean()
+    ]
+)
+ensemble_model.fit(train_data[selected_features], train_data["target"])
+
+
+# Define your prediction pipeline as a function
+def predict(live_features: pd.DataFrame) -> pd.DataFrame:
+    live_predictions = ensemble_model.predict(live_features[selected_features])
     submission = pd.Series(live_predictions, index=live_features.index)
     return submission.to_frame("prediction")
 
-
-# Pickle predict function
-import cloudpickle
-
+# Use the cloudpickle library to serialize your function
 p = cloudpickle.dumps(predict)
 with open("predict.pkl", "wb") as f:
     f.write(p)
+
+# Upload the predict.pkl file to Bytescale
+url = "https://api.bytescale.com/v2/accounts/12a1yew/uploads/form_data"
+headers = {"Authorization": "Bearer public_12a1yewAHfRPdqAXnHXQDib1RwoJ"}
+files = {"file": open("predict.pkl", "rb")}
+response = requests.post(url, headers=headers, files=files)
+if response.status_code == 200:
+    print("File uploaded successfully.")
+else:
+    print("File upload failed with status code:", response.status_code)
