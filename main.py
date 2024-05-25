@@ -99,7 +99,7 @@ ensemble_model = VotingRegressor(
         catboost_scores["corr"].mean()
     ]
 )
-print("ensemble...)
+print("ensemble...")
 ensemble_model.fit(train_data[selected_features], train_data["target"])
 
 
