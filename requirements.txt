@@ -8,5 +8,9 @@ scipy==1.10.1
 numerai-tools
 matplotlib
 catboost
+optuna
 xgboost
-tensorflow
+tensorflow==2.16.1
+modal
+shap
+bayesian-optimization

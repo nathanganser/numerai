@@ -1,9 +1,6 @@
-import modal
-from modal import Image
 import json
-
 import pandas as pd
-import numpy as np
+
 from numerapi import NumerAPI
 import cloudpickle
 import requests
@@ -12,10 +9,8 @@ import lightgbm as lgb
 from catboost import CatBoostRegressor
 from sklearn.ensemble import StackingRegressor
 
-
 logging.basicConfig(level=logging.INFO)
-model_name = "gpt4o"
-
+model_name = "claude_v1"
 
 def compute_me():
     napi = NumerAPI()
@@ -27,7 +22,6 @@ def compute_me():
     napi.download_dataset(f"{DATA_VERSION}/features.json")
     feature_metadata = json.load(open(f"{DATA_VERSION}/features.json"))
     feature_set = feature_metadata["feature_sets"][featureset]
-
 
     # Load and preprocess data
     logging.info("Loading and preprocessing data...")
@@ -42,11 +36,6 @@ def compute_me():
 
     # Print the updated number of rows
     print(f"Number of rows after deleting NaN values: {len(val_data)}")
-
-    #val_data = val_data[val_data["era"].isin(val_data["era"].unique()[::16])]
-    # Print the number of unique eras and rows after filtering
-    #print(f"Number of unique eras after filtering: {val_data['era'].nunique()}")
-    #print(f"Number of rows after filtering: {len(val_data)}")
 
     features = feature_set
     target = "target"
@@ -100,11 +89,10 @@ def compute_me():
     predictions = predict(live_data)
     logging.info(f"Predictions shape: {predictions.shape}")
 
-    # Serialize and upload prediction function
-    logging.info("Serializing and uploading prediction function...")
-    p = cloudpickle.dumps(predict)
+    # Serialize and save prediction function
+    logging.info("Serializing and saving prediction function...")
     with open(f"{model_name}.pkl", "wb") as f:
-        f.write(p)
+        cloudpickle.dump(predict, f)
 
     url = "https://api.bytescale.com/v2/accounts/12a1yew/uploads/form_data"
     headers = {"Authorization": "Bearer public_12a1yewAHfRPdqAXnHXQDib1RwoJ"}
@@ -115,5 +103,5 @@ def compute_me():
     else:
         logging.error(f"File upload failed with status code: {response.status_code}")
 
-
-compute_me()
+if __name__ == "__main__":
+    compute_me()
