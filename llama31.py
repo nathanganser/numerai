@@ -18,16 +18,19 @@ import requests
 logging.basicConfig(level=logging.INFO)
 model_name = "llama31_improved"
 
+featureset = "small"
+n_trials=2 #100
+n_estimators=2 #20000
 
 def objective(trial, X, y):
     rf_params = {
-        'n_estimators': trial.suggest_int('rf_n_estimators', 100, 1000),
+        'n_estimators': trial.suggest_int('rf_n_estimators', n_estimators, n_estimators*2),
         'max_depth': trial.suggest_int('rf_max_depth', 3, 30),
         'min_samples_split': trial.suggest_int('rf_min_samples_split', 2, 20),
         'min_samples_leaf': trial.suggest_int('rf_min_samples_leaf', 1, 10)
     }
     gb_params = {
-        'n_estimators': trial.suggest_int('gb_n_estimators', 100, 1000),
+        'n_estimators': trial.suggest_int('gb_n_estimators', n_estimators, n_estimators*2),
         'max_depth': trial.suggest_int('gb_max_depth', 3, 30),
         'learning_rate': trial.suggest_loguniform('gb_learning_rate', 1e-3, 1.0),
         'subsample': trial.suggest_uniform('gb_subsample', 0.5, 1.0)
@@ -43,7 +46,7 @@ def objective(trial, X, y):
     gb_pred = gb.predict(X)
 
     stack_input = np.column_stack((rf_pred, gb_pred))
-    stack = RandomForestRegressor(n_estimators=100, random_state=42)
+    stack = RandomForestRegressor(n_estimators=n_estimators, random_state=42)
     stack.fit(stack_input, y)
 
     final_pred = stack.predict(stack_input)
@@ -54,7 +57,7 @@ def objective(trial, X, y):
 def compute_me():
     napi = NumerAPI()
     DATA_VERSION = "v4.3"
-    featureset = "small"
+
     logging.info("Downloading dataset...")
     # Uncomment these lines if you need to download the datasets
     # napi.download_dataset(f"{DATA_VERSION}/validation_int8.parquet")
@@ -69,7 +72,7 @@ def compute_me():
     data = pd.read_parquet(f"{DATA_VERSION}/validation_int8.parquet", columns=["era"] + targets + feature_set)
 
     # Use more data for improved model performance
-    data = data[data["era"].isin(data["era"].unique()[::36])]
+    data = data[data["era"].isin(data["era"].unique()[::72])]
 
     # Handle missing values
     data = data.dropna()
@@ -94,7 +97,7 @@ def compute_me():
     # Hyperparameter optimization
     logging.info("Performing hyperparameter optimization...")
     study = optuna.create_study(direction='minimize')
-    study.optimize(lambda trial: objective(trial, X_train, y_train), n_trials=100)
+    study.optimize(lambda trial: objective(trial, X_train, y_train), n_trials=n_trials)
 
     best_params = study.best_params
     logging.info(f"Best parameters: {best_params}")
@@ -123,7 +126,7 @@ def compute_me():
     gb_pred_train = gb_final.predict(X_train)
     stack_input_train = np.column_stack((rf_pred_train, gb_pred_train))
 
-    stack_final = RandomForestRegressor(n_estimators=100, random_state=42)
+    stack_final = RandomForestRegressor(n_estimators=n_estimators, random_state=42)
     stack_final.fit(stack_input_train, y_train)
 
     # Model evaluation
