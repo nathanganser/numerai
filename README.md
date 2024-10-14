@@ -7,6 +7,10 @@ Exploring Numerai
 - Check how to do evaluations in the code (diagnostics)
 - init_model= to conitnue training
 
+- ignore_the_idiot
+- use the categorial thing instead
+- create a set of baseline models for comparison
+
 ` modal run --detach main2.py`
 
 ## Next steps

@@ -1,30 +1,22 @@
-
-import pandas as pd
 import cloudpickle
 import logging
-# Import necessary libraries
-import numpy as np
-import numpy
-from catboost import CatBoostRegressor, Pool, metrics, cv
-import pandas as pd
+
+from catboost import CatBoostRegressor, Pool
 from sklearn.model_selection import train_test_split
 import pandas as pd
-import matplotlib.pyplot as plt
 from numerapi import NumerAPI
 import json
-import lightgbm as lgb
-from numerai_tools.scoring import numerai_corr, correlation_contribution
 
 # Initialize NumerAPI
 napi = NumerAPI()
 
 # Set data version
 DATA_VERSION = "v5.0"
-PERCENTAGE_DATA_USED = 100
-ITERATIONS = 300000 # 200000
-LEARNING_RATE = 0.008
-DEPTH = 8 # 8
-FEATURESET = 'all' # medium, all, small
+PERCENTAGE_DATA_USED = 1
+ITERATIONS = 300 # 200000
+LEARNING_RATE = 0.01
+DEPTH = 3 # 8
+FEATURESET = 'small' # medium, all, small
 
 # Download and load feature metadata
 napi.download_dataset(f"{DATA_VERSION}/features.json")
@@ -52,8 +44,6 @@ val_df = val_df.reset_index(drop=True)
 # Print the shapes of the resulting DataFrames
 print(f"Training set shape: {train_df.shape}")
 print(f"Validation set shape: {val_df.shape}")
-
-from catboost import CatBoostClassifier, Pool, metrics, cv
 
 # prompt: Generate X_train, y_train, X_test, y_test
 
@@ -85,16 +75,15 @@ model = CatBoostRegressor(
     learning_rate=LEARNING_RATE,
     depth=DEPTH,
     loss_function='RMSE',
-    od_type='Iter',
-    od_wait = 500,
+    early_stopping_rounds=round(ITERATIONS/10),
     bagging_temperature = 0.3,
     random_strength=0.3,
     leaf_estimation_iterations=10,
     leaf_estimation_method='Newton',
-    task_type='GPU',
+    #task_type='GPU',
     thread_count=-1)
 
-model.fit(train_pool, eval_set=test_pool, verbose=500, use_best_model=True);
+model.fit(train_pool, eval_set=test_pool, verbose=round(ITERATIONS/10), use_best_model=True);
 
 
 
